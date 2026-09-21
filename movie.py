@@ -1,64 +1,159 @@
-# ============================================================
-# MOVIE RECOMMENDATION SYSTEM
-# Collaborative Filtering + Cosine Similarity
-# ============================================================
-
+import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.metrics import mean_squared_error
+
+# ==========================================================
+# PAGE CONFIGURATION
+# ==========================================================
+
+st.set_page_config(
+    page_title="Movie Recommendation System",
+    page_icon="🎬",
+    layout="wide"
+)
+
+# ==========================================================
+# TITLE
+# ==========================================================
+
+st.title("🎬 Movie Recommendation System")
+st.markdown(
+    "### Collaborative Filtering using Cosine Similarity"
+)
+
+st.write(
+    "Upload your MovieLens movie and ratings datasets "
+    "to get personalized movie recommendations."
+)
+
+st.divider()
 
 
-# ============================================================
-# 1. LOAD DATA
-# ============================================================
+# ==========================================================
+# SIDEBAR
+# ==========================================================
 
-print("Loading data...")
+st.sidebar.header("📂 Upload Dataset")
 
-movies = pd.read_csv("movie.csv")
-ratings = pd.read_csv("ratings.csv")
+movie_file = st.sidebar.file_uploader(
+    "Upload movie.csv",
+    type=["csv"]
+)
 
-print("\nMovies:")
-print(movies.head())
-
-print("\nRatings:")
-print(ratings.head())
-
-
-# ============================================================
-# 2. CHECK DATA
-# ============================================================
-
-print("\n========== DATA INFORMATION ==========")
-
-print("Movies shape:", movies.shape)
-print("Ratings shape:", ratings.shape)
-
-print("\nMovie columns:")
-print(movies.columns.tolist())
-
-print("\nRating columns:")
-print(ratings.columns.tolist())
+ratings_file = st.sidebar.file_uploader(
+    "Upload ratings.csv",
+    type=["csv"]
+)
 
 
-# ============================================================
-# 3. DATA CLEANING
-# ============================================================
+# ==========================================================
+# MAIN APPLICATION
+# ==========================================================
 
-print("\n========== DATA CLEANING ==========")
+if movie_file is None or ratings_file is None:
 
-# Remove duplicate rows
+    st.info(
+        "👈 Please upload both **movie.csv** and **ratings.csv** "
+        "from the sidebar."
+    )
+
+    st.markdown("### Required columns")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("**movie.csv**")
+        st.code(
+            "movieId\n"
+            "title\n"
+            "genres"
+        )
+
+    with col2:
+        st.write("**ratings.csv**")
+        st.code(
+            "userId\n"
+            "movieId\n"
+            "rating\n"
+            "timestamp"
+        )
+
+    st.stop()
+
+
+# ==========================================================
+# LOAD DATA
+# ==========================================================
+
+try:
+
+    movies = pd.read_csv(movie_file)
+    ratings = pd.read_csv(ratings_file)
+
+except Exception as e:
+
+    st.error(f"Error loading files: {e}")
+    st.stop()
+
+
+# ==========================================================
+# CHECK REQUIRED COLUMNS
+# ==========================================================
+
+movie_columns = ["movieId", "title"]
+
+rating_columns = [
+    "userId",
+    "movieId",
+    "rating"
+]
+
+missing_movie_columns = [
+    col for col in movie_columns
+    if col not in movies.columns
+]
+
+missing_rating_columns = [
+    col for col in rating_columns
+    if col not in ratings.columns
+]
+
+if missing_movie_columns:
+
+    st.error(
+        "movie.csv is missing columns: "
+        + ", ".join(missing_movie_columns)
+    )
+
+    st.stop()
+
+
+if missing_rating_columns:
+
+    st.error(
+        "ratings.csv is missing columns: "
+        + ", ".join(missing_rating_columns)
+    )
+
+    st.stop()
+
+
+# ==========================================================
+# DATA CLEANING
+# ==========================================================
+
 movies = movies.drop_duplicates()
 ratings = ratings.drop_duplicates()
 
-# Remove missing important values
-movies = movies.dropna(subset=["movieId", "title"])
+movies = movies.dropna(
+    subset=["movieId", "title"]
+)
 
 ratings = ratings.dropna(
     subset=["userId", "movieId", "rating"]
 )
 
-# Convert data types
 movies["movieId"] = pd.to_numeric(
     movies["movieId"],
     errors="coerce"
@@ -79,31 +174,39 @@ ratings["rating"] = pd.to_numeric(
     errors="coerce"
 )
 
-# Remove invalid values
-movies = movies.dropna(subset=["movieId"])
-ratings = ratings.dropna(
-    subset=["userId", "movieId", "rating"]
+movies = movies.dropna(
+    subset=["movieId"]
 )
 
-movies["movieId"] = movies["movieId"].astype(int)
-ratings["userId"] = ratings["userId"].astype(int)
-ratings["movieId"] = ratings["movieId"].astype(int)
+ratings = ratings.dropna(
+    subset=[
+        "userId",
+        "movieId",
+        "rating"
+    ]
+)
 
-# Keep ratings between 0.5 and 5
+movies["movieId"] = movies[
+    "movieId"
+].astype(int)
+
+ratings["userId"] = ratings[
+    "userId"
+].astype(int)
+
+ratings["movieId"] = ratings[
+    "movieId"
+].astype(int)
+
 ratings = ratings[
     (ratings["rating"] >= 0.5) &
     (ratings["rating"] <= 5)
 ]
 
-print("Clean movie data:", movies.shape)
-print("Clean rating data:", ratings.shape)
 
-
-# ============================================================
-# 4. EXTRACT MOVIE YEAR
-# ============================================================
-
-print("\n========== MOVIE YEAR ==========")
+# ==========================================================
+# MOVIE YEAR
+# ==========================================================
 
 movies["Year"] = movies["title"].str.extract(
     r"\((\d{4})\)"
@@ -114,67 +217,80 @@ movies["Year"] = pd.to_numeric(
     errors="coerce"
 )
 
-print(
-    movies[["title", "Year"]].head(10)
-)
 
-
-# ============================================================
-# 5. BASIC EDA
-# ============================================================
-
-print("\n========== EDA ==========")
+# ==========================================================
+# KPI SECTION
+# ==========================================================
 
 total_movies = movies["movieId"].nunique()
 total_users = ratings["userId"].nunique()
 total_ratings = len(ratings)
 average_rating = ratings["rating"].mean()
 
-print("Total Movies:", total_movies)
-print("Total Users:", total_users)
-print("Total Ratings:", total_ratings)
-print(
-    "Average Rating:",
-    round(average_rating, 2)
-)
+st.subheader("📊 Dataset Overview")
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric(
+        "🎬 Total Movies",
+        f"{total_movies:,}"
+    )
+
+with col2:
+    st.metric(
+        "👥 Total Users",
+        f"{total_users:,}"
+    )
+
+with col3:
+    st.metric(
+        "⭐ Total Ratings",
+        f"{total_ratings:,}"
+    )
+
+with col4:
+    st.metric(
+        "⭐ Average Rating",
+        f"{average_rating:.2f}"
+    )
 
 
-# ============================================================
-# 6. MOST RATED MOVIES
-# ============================================================
-
-movie_rating_count = (
-    ratings.groupby("movieId")
-    .size()
-    .reset_index(name="Rating_Count")
-)
-
-most_rated = movie_rating_count.merge(
-    movies[["movieId", "title"]],
-    on="movieId",
-    how="left"
-)
-
-most_rated = most_rated.sort_values(
-    "Rating_Count",
-    ascending=False
-)
-
-print("\n========== TOP 10 MOST RATED MOVIES ==========")
-
-print(
-    most_rated[
-        ["title", "Rating_Count"]
-    ].head(10).to_string(index=False)
-)
+st.divider()
 
 
-# ============================================================
-# 7. HIGHEST RATED MOVIES
-# ============================================================
+# ==========================================================
+# DATA PREVIEW
+# ==========================================================
 
-movie_rating_stats = (
-    ratings.groupby("movieId")
+with st.expander("🔍 View Dataset"):
+
+    tab1, tab2 = st.tabs(
+        ["Movies", "Ratings"]
+    )
+
+    with tab1:
+        st.dataframe(
+            movies.head(100),
+            use_container_width=True
+        )
+
+    with tab2:
+        st.dataframe(
+            ratings.head(100),
+            use_container_width=True
+        )
+
+
+# ==========================================================
+# TOP MOVIES
+# ==========================================================
+
+st.subheader("🏆 Movie Analysis")
+
+movie_stats = (
+    ratings
+    .groupby("movieId")
     .agg(
         Average_Rating=("rating", "mean"),
         Rating_Count=("rating", "count")
@@ -182,224 +298,131 @@ movie_rating_stats = (
     .reset_index()
 )
 
-# Minimum 10 ratings
-highest_rated = movie_rating_stats[
-    movie_rating_stats["Rating_Count"] >= 10
-]
-
-highest_rated = highest_rated.sort_values(
-    "Average_Rating",
-    ascending=False
-)
-
-highest_rated = highest_rated.merge(
-    movies[["movieId", "title"]],
+movie_stats = movie_stats.merge(
+    movies[
+        ["movieId", "title"]
+    ],
     on="movieId",
     how="left"
 )
 
-print("\n========== TOP 10 HIGHEST RATED MOVIES ==========")
-
-print(
-    highest_rated[
-        [
-            "title",
-            "Average_Rating",
-            "Rating_Count"
-        ]
-    ].head(10).to_string(index=False)
+movie_stats = movie_stats.dropna(
+    subset=["title"]
 )
 
 
-# ============================================================
-# 8. CREATE USER-ITEM MATRIX
-# ============================================================
-
-print("\n========== USER-ITEM MATRIX ==========")
-
-user_item_matrix = ratings.pivot_table(
-    index="userId",
-    columns="movieId",
-    values="rating"
-)
-
-print(
-    "User-item matrix:",
-    user_item_matrix.shape
-)
-
-# Replace missing values with 0
-user_item_matrix_filled = user_item_matrix.fillna(0)
+col1, col2 = st.columns(2)
 
 
-# ============================================================
-# 9. USER-BASED COLLABORATIVE FILTERING
-# ============================================================
+with col1:
 
-print("\n========== USER SIMILARITY ==========")
+    st.write("### ⭐ Highest Rated Movies")
 
-user_similarity = cosine_similarity(
-    user_item_matrix_filled
-)
-
-user_similarity_df = pd.DataFrame(
-    user_similarity,
-    index=user_item_matrix_filled.index,
-    columns=user_item_matrix_filled.index
-)
-
-print(
-    "User similarity matrix:",
-    user_similarity_df.shape
-)
-
-
-# ============================================================
-# 10. USER-BASED RECOMMENDATION FUNCTION
-# ============================================================
-
-def user_based_recommendation(
-    user_id,
-    number_of_recommendations=5
-):
-
-    if user_id not in user_item_matrix_filled.index:
-        print("User ID not found.")
-        return pd.DataFrame()
-
-    # Find similar users
-    similar_users = (
-        user_similarity_df.loc[user_id]
-        .drop(user_id)
-        .sort_values(ascending=False)
-        .head(10)
-    )
-
-    # Movies already watched
-    watched_movies = set(
-        ratings[
-            ratings["userId"] == user_id
-        ]["movieId"]
-    )
-
-    recommendation_scores = {}
-
-    for similar_user, similarity_score in similar_users.items():
-
-        if similarity_score <= 0:
-            continue
-
-        similar_user_movies = ratings[
-            ratings["userId"] == similar_user
-        ]
-
-        for _, row in similar_user_movies.iterrows():
-
-            movie_id = int(row["movieId"])
-
-            # Don't recommend watched movies
-            if movie_id in watched_movies:
-                continue
-
-            rating = float(row["rating"])
-
-            score = rating * similarity_score
-
-            if movie_id not in recommendation_scores:
-                recommendation_scores[movie_id] = []
-
-            recommendation_scores[movie_id].append(score)
-
-    if len(recommendation_scores) == 0:
-        return pd.DataFrame()
-
-    # Calculate predicted rating
-    recommendations = []
-
-    for movie_id, scores in recommendation_scores.items():
-
-        predicted_rating = np.mean(scores)
-
-        recommendations.append(
-            [
-                movie_id,
-                predicted_rating
-            ]
-        )
-
-    recommendations = pd.DataFrame(
-        recommendations,
-        columns=[
-            "movieId",
-            "Predicted_Rating"
-        ]
-    )
-
-    recommendations = recommendations.sort_values(
-        "Predicted_Rating",
+    highest_rated = movie_stats[
+        movie_stats["Rating_Count"] >= 10
+    ].sort_values(
+        "Average_Rating",
         ascending=False
+    ).head(10)
+
+    st.dataframe(
+        highest_rated[
+            [
+                "title",
+                "Average_Rating",
+                "Rating_Count"
+            ]
+        ].reset_index(drop=True),
+        use_container_width=True
     )
 
-    recommendations = recommendations.head(
-        number_of_recommendations
+
+with col2:
+
+    st.write("### 🔥 Most Rated Movies")
+
+    most_rated = movie_stats.sort_values(
+        "Rating_Count",
+        ascending=False
+    ).head(10)
+
+    st.dataframe(
+        most_rated[
+            [
+                "title",
+                "Rating_Count",
+                "Average_Rating"
+            ]
+        ].reset_index(drop=True),
+        use_container_width=True
     )
 
-    # Add movie title
-    recommendations = recommendations.merge(
-        movies[["movieId", "title"]],
-        on="movieId",
-        how="left"
-    )
 
-    return recommendations[
-        [
-            "movieId",
-            "title",
-            "Predicted_Rating"
-        ]
-    ]
+st.divider()
 
 
-# ============================================================
-# 11. ITEM-BASED COLLABORATIVE FILTERING
-# ============================================================
+# ==========================================================
+# USER-ITEM MATRIX
+# ==========================================================
 
-print("\n========== ITEM SIMILARITY ==========")
-
-# Transpose matrix
-movie_item_matrix = user_item_matrix_filled.T
-
-# Calculate movie-to-movie similarity
-movie_similarity = cosine_similarity(
-    movie_item_matrix
+st.subheader(
+    "🤖 Building Recommendation System"
 )
 
-movie_similarity_df = pd.DataFrame(
-    movie_similarity,
-    index=movie_item_matrix.index,
-    columns=movie_item_matrix.index
-)
-
-print(
-    "Movie similarity matrix:",
-    movie_similarity_df.shape
-)
-
-
-# ============================================================
-# 12. ITEM-BASED RECOMMENDATION FUNCTION
-# ============================================================
-
-def item_based_recommendation(
-    user_id,
-    number_of_recommendations=5
+with st.spinner(
+    "Creating user-item matrix..."
 ):
 
-    if user_id not in ratings["userId"].values:
-        print("User ID not found.")
-        return pd.DataFrame()
+    user_item_matrix = ratings.pivot_table(
+        index="userId",
+        columns="movieId",
+        values="rating"
+    )
 
-    # Get user's ratings
+    user_item_filled = user_item_matrix.fillna(0)
+
+
+st.success(
+    f"User-item matrix created: "
+    f"{user_item_matrix.shape[0]} users × "
+    f"{user_item_matrix.shape[1]} movies"
+)
+
+
+# ==========================================================
+# ITEM SIMILARITY
+# ==========================================================
+
+with st.spinner(
+    "Calculating movie similarity..."
+):
+
+    movie_item_matrix = user_item_filled.T
+
+    movie_similarity = cosine_similarity(
+        movie_item_matrix
+    )
+
+    movie_similarity_df = pd.DataFrame(
+        movie_similarity,
+        index=movie_item_matrix.index,
+        columns=movie_item_matrix.index
+    )
+
+st.success(
+    "✅ Movie similarity calculated using Cosine Similarity"
+)
+
+
+# ==========================================================
+# RECOMMENDATION FUNCTION
+# ==========================================================
+
+def get_recommendations(
+    user_id,
+    number_of_recommendations
+):
+
     user_ratings = ratings[
         ratings["userId"] == user_id
     ].sort_values(
@@ -407,42 +430,62 @@ def item_based_recommendation(
         ascending=False
     )
 
-    # Movies already watched
+    if user_ratings.empty:
+        return pd.DataFrame()
+
     watched_movies = set(
         user_ratings["movieId"]
     )
 
     recommendation_scores = {}
 
-    # Use user's top rated movies
+    # Take user's highest-rated movies
     top_movies = user_ratings.head(10)
 
     for _, row in top_movies.iterrows():
 
         movie_id = int(row["movieId"])
-        user_rating = float(row["rating"])
+
+        user_rating = float(
+            row["rating"]
+        )
 
         if movie_id not in movie_similarity_df.index:
             continue
 
         similar_movies = (
-            movie_similarity_df[movie_id]
+            movie_similarity_df[
+                movie_id
+            ]
             .drop(movie_id)
-            .sort_values(ascending=False)
+            .sort_values(
+                ascending=False
+            )
             .head(20)
         )
 
-        for similar_movie_id, similarity in similar_movies.items():
+        for similar_movie_id, similarity in (
+            similar_movies.items()
+        ):
 
-            similar_movie_id = int(similar_movie_id)
+            similar_movie_id = int(
+                similar_movie_id
+            )
 
-            # Don't recommend already watched movies
+            # Don't recommend watched movies
             if similar_movie_id in watched_movies:
                 continue
 
-            score = similarity * user_rating
+            score = (
+                similarity *
+                user_rating
+            )
 
-            if similar_movie_id not in recommendation_scores:
+            if (
+                similar_movie_id
+                not in recommendation_scores
+            ):
+
                 recommendation_scores[
                     similar_movie_id
                 ] = []
@@ -451,208 +494,184 @@ def item_based_recommendation(
                 similar_movie_id
             ].append(score)
 
-    if len(recommendation_scores) == 0:
+    if not recommendation_scores:
         return pd.DataFrame()
 
-    recommendations = []
+    results = []
 
-    for movie_id, scores in recommendation_scores.items():
+    for movie_id, scores in (
+        recommendation_scores.items()
+    ):
 
         predicted_rating = np.mean(scores)
 
-        recommendations.append(
-            [
-                movie_id,
-                predicted_rating
-            ]
+        results.append(
+            {
+                "movieId": movie_id,
+                "Predicted_Rating": predicted_rating
+            }
         )
 
     recommendations = pd.DataFrame(
-        recommendations,
-        columns=[
-            "movieId",
-            "Predicted_Rating"
-        ]
+        results
     )
 
-    recommendations = recommendations.sort_values(
-        "Predicted_Rating",
-        ascending=False
-    )
-
-    recommendations = recommendations.head(
-        number_of_recommendations
+    recommendations = (
+        recommendations
+        .sort_values(
+            "Predicted_Rating",
+            ascending=False
+        )
+        .head(number_of_recommendations)
     )
 
     recommendations = recommendations.merge(
-        movies[["movieId", "title"]],
+        movies[
+            ["movieId", "title", "genres"]
+        ],
         on="movieId",
         how="left"
+    )
+
+    recommendations["Predicted_Rating"] = (
+        recommendations[
+            "Predicted_Rating"
+        ].clip(0, 5)
     )
 
     return recommendations[
         [
             "movieId",
             "title",
+            "genres",
             "Predicted_Rating"
         ]
     ]
 
 
-# ============================================================
-# 13. TEST USER RECOMMENDATION
-# ============================================================
+# ==========================================================
+# RECOMMENDATION SECTION
+# ==========================================================
 
-print("\n========== TEST RECOMMENDATION ==========")
+st.divider()
 
-# Take first available user
-test_user = ratings["userId"].iloc[0]
+st.subheader("🎯 Personalized Movie Recommendation")
 
-print("Testing User ID:", test_user)
 
-recommendations = item_based_recommendation(
-    test_user,
-    5
+user_list = sorted(
+    ratings["userId"].unique()
 )
 
-print("\nTop 5 Recommended Movies:")
-
-print(
-    recommendations.to_string(index=False)
+selected_user = st.selectbox(
+    "👤 Select User ID",
+    user_list
 )
 
-
-# ============================================================
-# 14. USER-BASED TEST
-# ============================================================
-
-print("\n========== USER-BASED RECOMMENDATION ==========")
-
-user_recommendations = user_based_recommendation(
-    test_user,
-    5
-)
-
-print(
-    user_recommendations.to_string(index=False)
+number_of_movies = st.slider(
+    "Number of Recommendations",
+    min_value=1,
+    max_value=10,
+    value=5
 )
 
 
-# ============================================================
-# 15. CREATE RECOMMENDATIONS FOR MULTIPLE USERS
-# ============================================================
+if st.button(
+    "🎬 Get Recommendations",
+    type="primary"
+):
 
-print("\n========== CREATING RECOMMENDATION FILE ==========")
+    with st.spinner(
+        "Finding movies for you..."
+    ):
 
-all_recommendations = []
+        recommendations = get_recommendations(
+            selected_user,
+            number_of_movies
+        )
 
-# First 20 users
-users_to_process = (
-    ratings["userId"]
-    .drop_duplicates()
-    .head(20)
+    if recommendations.empty:
+
+        st.warning(
+            "No recommendations found for this user."
+        )
+
+    else:
+
+        st.success(
+            f"Found {len(recommendations)} recommendations!"
+        )
+
+        st.dataframe(
+            recommendations,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ==========================================================
+# USER RATING HISTORY
+# ==========================================================
+
+st.divider()
+
+st.subheader("📜 User Rating History")
+
+history = ratings[
+    ratings["userId"] == selected_user
+].merge(
+    movies[
+        ["movieId", "title", "genres"]
+    ],
+    on="movieId",
+    how="left"
 )
 
-for user_id in users_to_process:
-
-    recs = item_based_recommendation(
-        user_id,
-        5
-    )
-
-    if recs.empty:
-        continue
-
-    recs.insert(
-        0,
-        "userId",
-        user_id
-    )
-
-    all_recommendations.append(
-        recs
-    )
-
-
-if len(all_recommendations) > 0:
-
-    final_recommendations = pd.concat(
-        all_recommendations,
-        ignore_index=True
-    )
-
-    final_recommendations.to_csv(
-        "Top_5_Recommended_Movies.csv",
-        index=False
-    )
-
-    print(
-        "\nFile created:"
-        " Top_5_Recommended_Movies.csv"
-    )
-
-    print("\nSample:")
-    print(
-        final_recommendations.head(20)
-        .to_string(index=False)
-    )
-
-else:
-
-    print("No recommendations generated.")
-
-
-# ============================================================
-# 16. BASELINE RMSE
-# ============================================================
-
-print("\n========== RMSE ==========")
-
-# Simple baseline:
-# Predict every rating using average rating
-
-actual_ratings = ratings["rating"]
-
-average_rating = ratings["rating"].mean()
-
-predicted_ratings = np.full(
-    len(actual_ratings),
-    average_rating
+history = history.sort_values(
+    "rating",
+    ascending=False
 )
 
-rmse = np.sqrt(
-    mean_squared_error(
-        actual_ratings,
-        predicted_ratings
-    )
-)
-
-print(
-    "Baseline RMSE:",
-    round(rmse, 4)
+st.dataframe(
+    history[
+        [
+            "movieId",
+            "title",
+            "genres",
+            "rating"
+        ]
+    ].head(20),
+    use_container_width=True,
+    hide_index=True
 )
 
 
-# ============================================================
-# 17. FINAL OUTPUT
-# ============================================================
+# ==========================================================
+# DOWNLOAD RECOMMENDATIONS
+# ==========================================================
 
-print("\n==========================================")
-print("MOVIE RECOMMENDATION SYSTEM COMPLETED")
-print("==========================================")
+if "recommendations" in locals():
 
-print("\nFiles required:")
-print("1. movie.csv")
-print("2. ratings.csv")
+    if not recommendations.empty:
 
-print("\nOutput file:")
-print("Top_5_Recommended_Movies.csv")
+        csv_data = recommendations.to_csv(
+            index=False
+        )
 
-print("\nMethod used:")
-print("User-Based Collaborative Filtering")
-print("Item-Based Collaborative Filtering")
-print("Cosine Similarity")
+        st.download_button(
+            label="⬇️ Download Recommendations CSV",
+            data=csv_data,
+            file_name="Top_5_Recommended_Movies.csv",
+            mime="text/csv"
+        )
 
-print("\nYou can import")
-print("Top_5_Recommended_Movies.csv")
-print("into Power BI.")
+
+# ==========================================================
+# FOOTER
+# ==========================================================
+
+st.divider()
+
+st.caption(
+    "🎬 Movie Recommendation System | "
+    "Collaborative Filtering + Cosine Similarity"
+)
